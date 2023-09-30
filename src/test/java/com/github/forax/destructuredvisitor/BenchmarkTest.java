@@ -23,25 +23,27 @@ import org.openjdk.jmh.runner.options.TimeValue;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.util.Arrays;
+import java.util.Random;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.IntStream;
 
-// Benchmark                           (param)  Mode  Cnt   Score   Error  Units
-//BenchmarkTest.destructured_visitor        1  avgt    5   2.359 ± 0.031  ns/op
-//BenchmarkTest.destructured_visitor        2  avgt    5   7.262 ± 0.043  ns/op
-//BenchmarkTest.destructured_visitor        3  avgt    5   8.793 ± 0.077  ns/op
-//BenchmarkTest.destructured_visitor        4  avgt    5  14.497 ± 0.392  ns/op
-//BenchmarkTest.late_binding                1  avgt    5   2.322 ± 0.021  ns/op
-//BenchmarkTest.late_binding                2  avgt    5   6.973 ± 0.068  ns/op
-//BenchmarkTest.late_binding                3  avgt    5  23.359 ± 0.238  ns/op
-//BenchmarkTest.late_binding                4  avgt    5  31.366 ± 0.619  ns/op
-//BenchmarkTest.pattern_matching            1  avgt    5   2.368 ± 0.017  ns/op
-//BenchmarkTest.pattern_matching            2  avgt    5   5.873 ± 0.147  ns/op
-//BenchmarkTest.pattern_matching            3  avgt    5  11.766 ± 0.167  ns/op
-//BenchmarkTest.pattern_matching            4  avgt    5  16.747 ± 0.126  ns/op
-//BenchmarkTest.value_visitor               1  avgt    5   2.325 ± 0.020  ns/op
-//BenchmarkTest.value_visitor               2  avgt    5   6.288 ± 0.086  ns/op
-//BenchmarkTest.value_visitor               3  avgt    5  23.269 ± 0.298  ns/op
-//BenchmarkTest.value_visitor               4  avgt    5  31.315 ± 0.290  ns/op
+// Benchmark                           (param)  Mode  Cnt     Score      Error  Units
+//BenchmarkTest.destructured_visitor        1  avgt    5   926.826 ±    9.700  ns/op
+//BenchmarkTest.destructured_visitor        2  avgt    5  1129.180 ±   11.870  ns/op
+//BenchmarkTest.destructured_visitor        3  avgt    5  1518.021 ±    5.744  ns/op
+//BenchmarkTest.destructured_visitor        4  avgt    5  1720.335 ±   32.008  ns/op
+//BenchmarkTest.late_binding                1  avgt    5   928.561 ±   16.714  ns/op
+//BenchmarkTest.late_binding                2  avgt    5  1328.293 ±   11.247  ns/op
+//BenchmarkTest.late_binding                3  avgt    5  5952.381 ± 1149.418  ns/op  <--- ??
+//BenchmarkTest.late_binding                4  avgt    5  5170.146 ±  581.569  ns/op  <--- ??
+//BenchmarkTest.pattern_matching            1  avgt    5  2082.597 ±   38.425  ns/op
+//BenchmarkTest.pattern_matching            2  avgt    5  2365.522 ±   36.688  ns/op
+//BenchmarkTest.pattern_matching            3  avgt    5  3499.374 ±   62.536  ns/op
+//BenchmarkTest.pattern_matching            4  avgt    5  4119.234 ±   47.137  ns/op
+//BenchmarkTest.value_visitor               1  avgt    5   927.463 ±   13.929  ns/op
+//BenchmarkTest.value_visitor               2  avgt    5  1331.092 ±   14.816  ns/op
+//BenchmarkTest.value_visitor               3  avgt    5  4089.133 ±  131.302  ns/op
+//BenchmarkTest.value_visitor               4  avgt    5  4131.909 ±  104.086  ns/op
 @State(Scope.Benchmark)
 public class BenchmarkTest {
   interface Visitor {
@@ -51,6 +53,7 @@ public class BenchmarkTest {
     int visit(L l);
     int visit(M m);
     int visit(N n);
+    int visit(O o);
   }
 
   sealed interface I {
@@ -86,6 +89,10 @@ public class BenchmarkTest {
     public int accept(Visitor visitor) { return visitor.visit(this); }
     public int value() { return v; }
   }
+  record O(int v) implements  J {
+    public int accept(Visitor visitor) { return visitor.visit(this); }
+    public int value() { return v; }
+  }
 
   @Param({ "1", "2", "3", "4" })
   String param;
@@ -93,8 +100,16 @@ public class BenchmarkTest {
   I[] array;
 
   @Setup
-  public void setup() {
-    array = switch (param) {
+  public void initArray() {
+    var samples = samples();
+    array = new Random(0)
+        .ints(1024, 0, samples.length)
+        .mapToObj(i -> samples[i % samples.length])
+        .toArray(I[]::new);
+  }
+
+  private I[] samples() {
+    return switch (param) {
       case "1" -> new I[] {
           new A(new K(1)),
           new B(new L(2)),
@@ -118,10 +133,10 @@ public class BenchmarkTest {
           new A(new L(2)),
           new A(new M(3)),
           new A(new N(4)),
-          new B(new L(1)),
           new B(new L(2)),
           new B(new M(3)),
-          new B(new N(4))
+          new B(new N(4)),
+          new B(new O(5))
       };
       default -> throw new AssertionError();
     };
@@ -144,6 +159,7 @@ public class BenchmarkTest {
     public int visit(L l) { return l.v; }
     public int visit(M m) { return m.v; }
     public int visit(N n) { return n.v; }
+    public int visit(O o) { return o.v; }
 
     private static final ValueVisitor VISITOR = new ValueVisitor();
   }
@@ -163,10 +179,12 @@ public class BenchmarkTest {
       case A(L l) -> l.v;
       case A(M m) -> m.v;
       case A(N n) -> n.v;
+      case A(O o) -> o.v;
       case B(K k) -> k.v;
       case B(L l) -> l.v;
       case B(M m) -> m.v;
       case B(N n) -> n.v;
+      case B(O o) -> o.v;
     };
   }
 
@@ -190,6 +208,7 @@ public class BenchmarkTest {
     static int value(L l) { return l.v; }
     static int value(M m) { return m.v; }
     static int value(N n) { return n.v; }
+    static int value(O o) { return o.v; }
 
     private static final MethodHandle DISPATCH = DestructuredVisitor.of(MethodHandles.lookup(),
         Arrays.stream(ValueDestructuredVisitor.class.getDeclaredMethods()).toList())
