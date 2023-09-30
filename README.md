@@ -62,3 +62,13 @@ public static void main(String[] args) throws Throwable {
   int passengers = (int) Demo.DISPATCH.invokeExact((Vehicle) truck);
 }
 ```
+
+
+### How to build the code
+
+You need Java 21. The code of the DestructuredVisitor is compatible with Java 8 but the tests required Java 21.
+
+To build with maven
+```
+  mvn package
+```
