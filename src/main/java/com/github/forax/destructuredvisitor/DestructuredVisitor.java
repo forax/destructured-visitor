@@ -23,10 +23,54 @@ import static java.lang.invoke.MethodHandles.lookup;
 import static java.lang.invoke.MethodType.methodType;
 import static java.util.stream.Collectors.toList;
 
+/**
+ * A destructured visitor is a fast implementation of a visitor pattern when the visit methods
+ * <ol>
+ *   <li>are not necessarily declared in the same class</li>
+ *   <li>can ask for a specific inlining cache avoiding polymorphic calls at runtime</li>
+ * </ol>
+ *
+ * Here is an example of usage
+ * <pre>
+ *   interface Vehicle { }
+ *   record Car(int passenger) implements Vehicle { }
+ *   record CarrierTruck(Vehicle vehicle) implements Vehicle { }
+ *
+ *   // visit method for a CarrierTruck, also ask for a dispatch method handle that takes a Vehicle and return an int
+ *   static int passengers(CarrierTruck truck,
+ *                         @Signature({int.class, Vehicle.class}) MethodHandle dispatch) throws Throwable {
+ *     return (int) dispatch.invokeExact(truck.vehicle);
+ *   }
+ *
+ *   // visit method for a Car
+ *   static int passengers(Car car) {
+ *     return car.passenger;
+ *   }
+ *
+ *   private static final MethodHandle DISPATCH = DestructuredVisitor.of(lookup(),
+ *         Arrays.stream(Demo.class.getDeclaredMethods())
+ *               .filter(m -> m.getName().equals("passengers"))
+ *               .toList())
+ *       .createDispatch(int.class, Vehicle.class);
+ *   }
+ *
+ *   public static void main(String[] args) throws Throwable {
+ *     CarrierTruck truck = new CarrierTruck(new Car(4));
+ *     int passengers = (int) DISPATCH.invokeExact((Vehicle) truck);
+ *   }
+ * </pre>
+ */
 public class DestructuredVisitor {
+  /**
+   * Declare the return type and parameter types of the dispatch method handle.
+   */
   @Target(ElementType.PARAMETER)
   @Retention(RetentionPolicy.RUNTIME)
   public @interface Signature {
+    /**
+     * Returns the return type and parameter types of the dispatch method handle
+     * @return the return type and parameter types of the dispatch method handle
+     */
     Class<?>[] value();
   }
 
@@ -66,6 +110,16 @@ public class DestructuredVisitor {
         .collect(toList());
   }
 
+  /**
+   * Creates a destructured visitor from a lookup and a list of methods to visit.
+   *
+   * @param lookup a lookup able to see the methods
+   * @param methods a list of methods to visit
+   * @return a destructured visitor
+   * @throws NullPointerException if the {@code lookup} or {@code methods} is null
+   * @throws IllegalArgumentException if either there is no methods, a method
+   *  is neither an instance method nor a static method that takes at least one parameter
+   */
   public static DestructuredVisitor of(Lookup lookup, List<Method> methods) {
     Objects.requireNonNull(lookup);
     Objects.requireNonNull(methods);
@@ -160,6 +214,16 @@ public class DestructuredVisitor {
     }
   }
 
+  /**
+   * Creates a dispatch method handle able to call one of the visit methods registered
+   * by {@link #of(Lookup, List)}.
+   * To be fully expanded by the JIT, the returned method handle has to be considered as a constant by the JIT,
+   * for example by storing the method handle in a static final field.
+   *
+   * @param signatureClasses the return type and the parameter types of the dispatch method
+   * @return a dispatch method handle
+   * @throws NullPointerException if {code signatureClasses} is null
+   */
   public MethodHandle createDispatch(Class<?>... signatureClasses) {
     Objects.requireNonNull(signatureClasses);
     return new InliningCache(toMethodType(signatureClasses), cache).dynamicInvoker();
