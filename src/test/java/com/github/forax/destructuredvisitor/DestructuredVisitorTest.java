@@ -4,12 +4,13 @@ import org.junit.jupiter.api.Test;
 
 import java.lang.invoke.MethodHandle;
 import java.util.Arrays;
+import java.util.List;
 
 import static java.lang.invoke.MethodHandles.lookup;
 import static org.junit.jupiter.api.Assertions.*;
 
 public class DestructuredVisitorTest {
-  private static class Demo {
+  private static class Example {
     interface Vehicle { }
     record Car(int passenger) implements Vehicle { }
     record CarrierTruck(Vehicle vehicle) implements Vehicle { }
@@ -24,7 +25,7 @@ public class DestructuredVisitorTest {
     }
 
     private static final MethodHandle DISPATCH = DestructuredVisitor.of(lookup(),
-            Arrays.stream(Demo.class.getDeclaredMethods())
+            Arrays.stream(Example.class.getDeclaredMethods())
                 .filter(m -> m.getName().equals("passengers"))
                 .toList())
         .createDispatch(int.class, Vehicle.class);
@@ -32,12 +33,50 @@ public class DestructuredVisitorTest {
 
   @Test
   public void example() throws Throwable {
-    var truck1 = new Demo.CarrierTruck(new Demo.Car(4));
-    var passengers1 = (int) Demo.DISPATCH.invokeExact((Demo.Vehicle) truck1);
+    var truck1 = new Example.CarrierTruck(new Example.Car(4));
+    var passengers1 = (int) Example.DISPATCH.invokeExact((Example.Vehicle) truck1);
     assertEquals(4, passengers1);
 
-    var truck2 = new Demo.CarrierTruck(new Demo.CarrierTruck(new Demo.Car(7)));
-    var passengers2 = (int) Demo.DISPATCH.invokeExact((Demo.Vehicle) truck2);
+    var truck2 = new Example.CarrierTruck(new Example.CarrierTruck(new Example.Car(7)));
+    var passengers2 = (int) Example.DISPATCH.invokeExact((Example.Vehicle) truck2);
     assertEquals(7, passengers2);
+  }
+
+  @Test
+  public void preconditions() throws NoSuchMethodException {
+    record Container() {
+      static void noParameters() {}
+      static void visit(Container container) {}
+    }
+
+    var lookup = lookup();
+    var noParameters = Container.class.getDeclaredMethod("noParameters");
+    var visit = Container.class.getDeclaredMethod("visit", Container.class);
+    assertAll(
+        () -> assertThrows(NullPointerException.class, () -> DestructuredVisitor.of(null, List.of())),
+        () -> assertThrows(NullPointerException.class, () -> DestructuredVisitor.of(lookup, null)),
+        () -> assertThrows(IllegalArgumentException.class, () -> DestructuredVisitor.of(lookup, List.of())),
+        () -> assertThrows(IllegalArgumentException.class, () -> DestructuredVisitor.of(lookup, List.of(noParameters))),
+        () -> assertThrows(IllegalArgumentException.class, () -> DestructuredVisitor.of(lookup, List.of())),
+        () -> assertThrows(NullPointerException.class, () -> DestructuredVisitor.of(lookup, List.of(visit)).createDispatch(null))
+    );
+  }
+
+  @Test
+  public void bimorphic() throws NoSuchMethodException {
+    record A() {}
+    record B() {}
+    class Container {
+      static String visit(A a) { return "A"; }
+      static String visit(B b) { return "B"; }
+    }
+
+    var dispatch = DestructuredVisitor.of(lookup(), Arrays.asList(Container.class.getDeclaredMethods()))
+        .createDispatch(String.class, Object.class);
+    assertAll(
+        () -> assertEquals("A", (String) dispatch.invokeExact((Object) new A())),
+        () -> assertEquals("B", (String) dispatch.invokeExact((Object) new B())),
+        () -> assertThrows(NullPointerException.class, () -> { var __ = (String) dispatch.invokeExact((Object) null); })
+    );
   }
 }
