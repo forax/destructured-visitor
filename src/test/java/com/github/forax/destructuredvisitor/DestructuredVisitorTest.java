@@ -60,7 +60,7 @@ public class DestructuredVisitorTest {
         () -> assertThrows(IllegalArgumentException.class, () -> DestructuredVisitor.of(lookup, List.of())),
         () -> assertThrows(IllegalArgumentException.class, () -> DestructuredVisitor.of(lookup, List.of(noParameters))),
         () -> assertThrows(IllegalArgumentException.class, () -> DestructuredVisitor.of(lookup, List.of())),
-        () -> assertThrows(NullPointerException.class, () -> DestructuredVisitor.of(lookup, List.of(visit)).createDispatch(null))
+        () -> assertThrows(NullPointerException.class, () -> DestructuredVisitor.of(lookup, List.of(visit)).createDispatch((Class<?>) null))
     );
   }
 
@@ -127,16 +127,16 @@ public class DestructuredVisitorTest {
       private static final MethodHandle DISPATCH_UNIT = VISITOR.createDispatch(int.class, Unit.class);
 
       static int visit(Boat boat) throws Throwable {
-        var sum = 0;
-        for(var unit: boat.units) {
-          sum += (int) DISPATCH_UNIT.invokeExact(unit);
-        }
-        return sum;
+        return visitUnits(boat.units());
       }
 
       static int visit(Tank tank) throws Throwable {
+        return visitUnits(tank.units());
+      }
+
+      static int visitUnits(List<Unit> units) throws Throwable {
         var sum = 0;
-        for(var unit: tank.units) {
+        for(var unit: units) {
           sum += (int) DISPATCH_UNIT.invokeExact(unit);
         }
         return sum;
@@ -212,16 +212,16 @@ public class DestructuredVisitorTest {
       static int visit(Soldier soldier) { return 14; }
 
       static int visit(Boat boat, @Signature({int.class, Unit.class}) MethodHandle dispatchUnit) throws Throwable {
-        var sum = 0;
-        for(var unit: boat.units) {
-          sum += (int) dispatchUnit.invokeExact(unit);
-        }
-        return sum;
+        return visitUnits(boat.units(), dispatchUnit);
       }
 
       static int visit(Tank tank, @Signature({int.class, Unit.class}) MethodHandle dispatchUnit) throws Throwable {
+        return visitUnits(tank.units(), dispatchUnit);
+      }
+
+      static int visitUnits(List<Unit> units, MethodHandle dispatchUnit) throws Throwable {
         var sum = 0;
-        for(var unit: tank.units) {
+        for(var unit: units) {
           sum += (int) dispatchUnit.invokeExact(unit);
         }
         return sum;

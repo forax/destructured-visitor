@@ -16,7 +16,7 @@ record Boat(List<Unit> units) implements Carrier { }
 record Tank(List<Unit> units) implements Carrier { }
 ```
 
-A way to traverse the hierarchy to compute something using the pattern matching is
+A way to traverse those hierarchies to compute something is to use the pattern matching
 ```java
 static int visitCarrier(Carrier carrier) {
   return switch (carrier) {
@@ -50,16 +50,16 @@ static int visit(Sailor sailor) { return 12; }
 static int visit(Soldier soldier) { return 14; }
 
 static int visit(Boat boat, @Signature({int.class, Unit.class}) MethodHandle dispatchUnit) throws Throwable {
-  var sum = 0;
-  for(var unit: boat.units) {
-    sum += (int) dispatchUnit.invokeExact(unit);
-  }
-  return sum;
+  return visitUnits(boat.units(), dispatchUnit);
 }
 
 static int visit(Tank tank, @Signature({int.class, Unit.class}) MethodHandle dispatchUnit) throws Throwable {
+  return visitUnits(tank.units(), dispatchUnit);
+}
+
+static int visitUnits(List<Unit> units, MethodHandle dispatchUnit) throws Throwable {
   var sum = 0;
-  for(var unit: tank.units) {
+  for(var unit: units) {
     sum += (int) dispatchUnit.invokeExact(unit);
   }
   return sum;
