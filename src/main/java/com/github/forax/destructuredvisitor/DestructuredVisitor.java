@@ -10,8 +10,8 @@ import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodHandles.Lookup;
 import java.lang.invoke.MethodType;
 import java.lang.invoke.MutableCallSite;
+import java.lang.reflect.AnnotatedType;
 import java.lang.reflect.Method;
-import java.lang.reflect.Modifier;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
@@ -128,9 +128,6 @@ public class DestructuredVisitor {
     }
     DestructuredVisitor destructuredVisitor = new DestructuredVisitor();
     for(Method method: methods) {
-      if (!Modifier.isStatic(method.getModifiers())) {
-        throw new IllegalArgumentException("method " + method + " is not static");
-      }
       MethodHandle mh;
       try {
         mh = lookup.unreflect(method);
@@ -141,7 +138,14 @@ public class DestructuredVisitor {
       if (methodType.parameterCount() == 0) {
         throw new IllegalArgumentException("method " + method + " should have at least one parameter");
       }
-      MethodData methodData = new MethodData(mh, toSignatures(method.getParameterAnnotations()));
+      AnnotatedType annotatedReceiver = method.getAnnotatedReceiverType();
+      Annotation[][] parameterAnnotations = (annotatedReceiver == null) ?
+          method.getParameterAnnotations() :
+          Stream.concat(
+              Stream.<Annotation[]>of(annotatedReceiver.getAnnotations()),
+              Arrays.stream(method.getParameterAnnotations())
+          ).toArray(Annotation[][]::new);
+      MethodData methodData = new MethodData(mh, toSignatures(parameterAnnotations));
 
       // inject the method into the cache
       CURRENT_METHOD_DATA.set(methodData);
