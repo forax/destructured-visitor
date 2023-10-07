@@ -2,65 +2,83 @@
 Destructured Visitor is a fast by type-unsafe implementation of a recursive Visitor in Java.
 
 Unlike a classical recursive visitor or the pattern-matching (switch on types), this implementation
-instead of using the bimprohic inlining cache used by the Java VMs by default when doing a call
-allow to use a specific inlining cache that is not shared in between different part of the tree.
+uses a specific inlining cache that is not shared in between different part of the tree of instances.
 
-Let suppose we have the following hierarchy
+Let suppose we have the following hierarchies
 ```java
-sealed interface Vehicle permits Car, Carrier { }
-record Car(int passenger) implements Vehicle { }
-record CarrierTruck(Vehicle vehicle) implements Vehicle { }
+interface Unit {}
+record Marine() implements Unit {}
+record Sailor() implements Unit {}
+record Soldier() implements Unit {}
+
+interface Carrier {}
+record Boat(List<Unit> units) implements Carrier { }
+record Tank(List<Unit> units) implements Carrier { }
 ```
 
 A way to traverse the hierarchy to compute something using the pattern matching is
 ```java
-static int dispatch(Vehicle vehicle) {
-  return switch(vehicle) {
-    case Car car -> passengers(car);
-    case CarrierTruck truck -> passengers(truck);
+static int visitCarrier(Carrier carrier) {
+  return switch (carrier) {
+    case Boat(var units) -> visitUnits(units);
+    case Tank(var units) -> visitUnits(units);
   };
 }
 
-// visit method for a CarrierTruck,
-static int passengers(CarrierTruck truck) {
-  return (int) dispatch.invokeExact(truck.vehicle);
+static int visitUnits(List<Unit> units) {
+  return units.stream().mapToInt(PatternMatching::visitUnit).sum();
 }
 
-// visit method for a Car
-static int passengers(Car car) {
-  return car.passenger;
+static int visitUnit(Unit unit) {
+  return switch (unit) {
+    case Marine marine -> 10;
+    case Sailor sailor -> 12;
+    case Soldier soldier -> 14;
+  };
 }
 
-public static void main(String[] args) throws Throwable {
-  CarrierTruck truck = new CarrierTruck(new Car(4));
-  int passengers = dispatch(truck);
-}
+public static void main(String[] args) {
+  var boat = new Boat(List.of(new Marine(), new Sailor(), new Soldier()));
+  System.out.println(PatternMatching.visitCarrier(boat)));  // 36
+  ...    
 ```
 
 This is how to do it using the destructured visitor
 ```java
-// visit method for a CarrierTruck, also ask for a dispatch method handle that takes a Vehicle and return an int
-static int passengers(CarrierTruck truck,
-                      @Signature({int.class, Vehicle.class}) MethodHandle dispatch) throws Throwable {
-  return (int) dispatch.invokeExact(truck.vehicle);
+static int visit(Marine marine) { return 10; }
+static int visit(Sailor sailor) { return 12; }
+static int visit(Soldier soldier) { return 14; }
+
+static int visit(Boat boat, @Signature({int.class, Unit.class}) MethodHandle dispatchUnit) throws Throwable {
+  var sum = 0;
+  for(var unit: boat.units) {
+    sum += (int) dispatchUnit.invokeExact(unit);
+  }
+  return sum;
 }
 
-// visit method for a Car
-static int passengers(Car car) {
-  return car.passenger;
+static int visit(Tank tank, @Signature({int.class, Unit.class}) MethodHandle dispatchUnit) throws Throwable {
+  var sum = 0;
+  for(var unit: tank.units) {
+    sum += (int) dispatchUnit.invokeExact(unit);
+  }
+  return sum;
 }
 
-private static final MethodHandle DISPATCH = DestructuredVisitor.of(lookup(),
-      Arrays.stream(Demo.class.getDeclaredMethods())
-            .filter(m -> m.getName().equals("passengers"))
-            .toList())
-    .createDispatch(int.class, Vehicle.class);
+static final DestructuredVisitor VISITOR = DestructuredVisitor.of(MethodHandles.lookup(),
+              Arrays.stream(Visitor.class.getDeclaredMethods())
+                  .filter(m -> m.getName().equals("visit"))
+                  .toList());
+static final MethodHandle DISPATCH_CARRIER = VISITOR.createDispatch(int.class, Carrier.class);
+
+static int accept(Carrier carrier) throws Throwable {
+  return (int) DISPATCH_CARRIER.invokeExact(carrier);
 }
 
 public static void main(String[] args) throws Throwable {
-  CarrierTruck truck = new CarrierTruck(new Car(4));
-  int passengers = (int) Demo.DISPATCH.invokeExact((Vehicle) truck);
-}
+  var boat = new Boat(List.of(new Marine(), new Sailor(), new Soldier()));
+  System.out.println(Visitor.accept(boat)));  // 36
+  ...  
 ```
 
 
